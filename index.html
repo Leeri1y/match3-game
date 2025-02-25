@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>开心消消乐</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            touch-action: none;
+        }
+
+        #gameContainer {
+            position: relative;
+            margin-top: 20px;
+        }
+
+        canvas {
+            border: 2px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+        }
+
+        .level {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .score {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .target {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #666;
+        }
+
+        .moves {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #666;
+        }
+
+        #restartButton {
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        #restartButton:hover {
+            background-color: #45a049;
+        }
+
+        /* 添加移动端优化样式 */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            canvas {
+                max-width: 100%;
+                height: auto;
+            }
+            
+            .score, .level {
+                font-size: 20px;
+            }
+            
+            .moves, .target {
+                font-size: 16px;
+            }
+            
+            #restartButton {
+                padding: 15px 30px;
+                font-size: 20px;
+                margin-top: 30px;
+            }
+        }
+        
+        /* 防止页面滚动 */
+        html, body {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="level">关卡: <span id="level">1</span></div>
+    <div class="score">分数: <span id="score">0</span></div>
+    <div class="target">目标分数: <span id="target">500</span></div>
+    <div class="moves">剩余步数: <span id="moves">35</span></div>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <button id="restartButton">重新开始</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const movesElement = document.getElementById('moves');
+        const restartButton = document.getElementById('restartButton');
+
+        // 游戏配置
+        const GRID_SIZE = 8;
+        const CELL_SIZE = Math.min(
+            (Math.min(window.innerWidth, window.innerHeight) - 40) / GRID_SIZE,
+            50
+        );
+        const COLORS = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
+        const ANIMATION_SPEED = 10;
+
+        // 设置画布大小
+        canvas.width = GRID_SIZE * CELL_SIZE;
+        canvas.height = GRID_SIZE * CELL_SIZE;
+
+        // 游戏状态
+        let grid = [];
+        let score = 0;
+        let moves = 35;
+        let selectedCell = null;
+        let isAnimating = false;
+
+        // 修改关卡系统
+        let currentLevel = 1;
+        let targetScore = 500; // 降低初始目标分数
+        const levelElement = document.getElementById('level');
+        const targetElement = document.getElementById('target');
+
+        // 添加关卡配置
+        const levelConfig = {
+            1: { target: 500, moves: 35 },    // 第一关：简单，更多步数
+            2: { target: 1000, moves: 30 },   // 第二关：稍微提高难度
+            3: { target: 2000, moves: 28 },   // 第三关：继续提升但仍适中
+            4: { target: 3500, moves: 25 },   // 第四关开始难度显著提升
+            5: { target: 5500, moves: 23 },
+            6: { target: 8000, moves: 20 },
+            7: { target: 11000, moves: 18 },
+            8: { target: 15000, moves: 16 },
+            9: { target: 20000, moves: 15 },
+            10: { target: 26000, moves: 14 }
+        };
+
+        // 初始化游戏网格
+        function initGrid() {
+            grid = [];
+            // 根据关卡决定使用的颜色数量
+            const levelColors = COLORS.slice(0, Math.min(3 + Math.floor(currentLevel / 2), COLORS.length));
+            
+            for (let i = 0; i < GRID_SIZE; i++) {
+                grid[i] = [];
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    grid[i][j] = {
+                        color: levelColors[Math.floor(Math.random() * levelColors.length)],
+                        y: i,
+                        targetY: i
+                    };
+                }
+            }
+        }
+
+        // 绘制游戏界面
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制网格
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    const cell = grid[i][j];
+                    if (cell) {
+                        ctx.fillStyle = cell.color;
+                        ctx.fillRect(
+                            j * CELL_SIZE, 
+                            cell.y * CELL_SIZE, 
+                            CELL_SIZE - 2, 
+                            CELL_SIZE - 2
+                        );
+
+                        // 绘制选中效果
+                        if (selectedCell && selectedCell.x === j && selectedCell.y === i) {
+                            ctx.strokeStyle = 'white';
+                            ctx.lineWidth = 3;
+                            ctx.strokeRect(
+                                j * CELL_SIZE + 3,
+                                cell.y * CELL_SIZE + 3,
+                                CELL_SIZE - 8,
+                                CELL_SIZE - 8
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // 检查是否有可消除的组合
+        function checkMatches() {
+            let matches = new Set();
+
+            // 检查水平方向
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE - 2; j++) {
+                    if (grid[i][j] && grid[i][j+1] && grid[i][j+2] &&
+                        grid[i][j].color === grid[i][j+1].color &&
+                        grid[i][j].color === grid[i][j+2].color) {
+                        matches.add(`${i},${j}`);
+                        matches.add(`${i},${j+1}`);
+                        matches.add(`${i},${j+2}`);
+                    }
+                }
+            }
+
+            // 检查垂直方向
+            for (let i = 0; i < GRID_SIZE - 2; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j] && grid[i+1][j] && grid[i+2][j] &&
+                        grid[i][j].color === grid[i+1][j].color &&
+                        grid[i][j].color === grid[i+2][j].color) {
+                        matches.add(`${i},${j}`);
+                        matches.add(`${i+1},${j}`);
+                        matches.add(`${i+2},${j}`);
+                    }
+                }
+            }
+
+            return matches;
+        }
+
+        // 消除匹配的糖果
+        function removeMatches(matches) {
+            matches.forEach(match => {
+                const [i, j] = match.split(',').map(Number);
+                grid[i][j] = null;
+            });
+            score += matches.size * 10;
+            scoreElement.textContent = score;
+        }
+
+        // 填充空缺
+        function fillGaps() {
+            for (let j = 0; j < GRID_SIZE; j++) {
+                let emptySpaces = 0;
+                for (let i = GRID_SIZE - 1; i >= 0; i--) {
+                    if (!grid[i][j]) {
+                        emptySpaces++;
+                    } else if (emptySpaces > 0) {
+                        grid[i + emptySpaces][j] = grid[i][j];
+                        grid[i][j] = null;
+                        grid[i + emptySpaces][j].targetY = i + emptySpaces;
+                    }
+                }
+
+                // 在顶部添加新的糖果
+                for (let i = 0; i < emptySpaces; i++) {
+                    grid[i][j] = {
+                        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                        y: -1,
+                        targetY: i
+                    };
+                }
+            }
+        }
+
+        // 动画更新
+        function update() {
+            let animating = false;
+            for (let i = 0; i < GRID_SIZE; i++) {
+                for (let j = 0; j < GRID_SIZE; j++) {
+                    if (grid[i][j] && grid[i][j].y !== grid[i][j].targetY) {
+                        grid[i][j].y += (grid[i][j].targetY - grid[i][j].y) / ANIMATION_SPEED;
+                        if (Math.abs(grid[i][j].y - grid[i][j].targetY) < 0.01) {
+                            grid[i][j].y = grid[i][j].targetY;
+                        }
+                        animating = true;
+                    }
+                }
+            }
+            return animating;
+        }
+
+        // 交换两个糖果
+        function swapCandies(x1, y1, x2, y2) {
+            const temp = grid[y1][x1];
+            grid[y1][x1] = grid[y2][x2];
+            grid[y2][x2] = temp;
+
+            if (grid[y1][x1]) grid[y1][x1].targetY = y1;
+            if (grid[y2][x2]) grid[y2][x2].targetY = y2;
+        }
+
+        // 处理点击事件
+        function handleClick(x, y) {
+            if (isAnimating || moves <= 0) return;
+
+            const gridX = Math.floor(x / CELL_SIZE);
+            const gridY = Math.floor(y / CELL_SIZE);
+
+            if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
+                const clickedColor = grid[gridY][gridX].color;
+                const matches = findConnectedBlocks(gridX, gridY, clickedColor);
+                
+                if (matches.size >= 2) { // 至少需要2个相连的相同颜色方块
+                    isAnimating = true;
+                    
+                    // 根据消除数量计算得分
+                    const totalScore = calculateScore(matches.size);
+                    score += totalScore;
+                    scoreElement.textContent = score;
+                    
+                    // 消除匹配的方块
+                    removeMatches(matches);
+                    fillGaps();
+                    
+                    // 检查是否达到过关条件
+                    if (score >= targetScore) {
+                        currentLevel++;
+                        if (levelConfig[currentLevel]) {
+                            targetScore = levelConfig[currentLevel].target;
+                            moves = levelConfig[currentLevel].moves;
+                        } else {
+                            // 如果超过预设关卡，使用动态计算
+                            targetScore = Math.floor(targetScore * 1.4);
+                            moves = Math.max(10, Math.floor(moves * 0.9));
+                        }
+                        
+                        levelElement.textContent = currentLevel;
+                        targetElement.textContent = targetScore;
+                        movesElement.textContent = moves;
+                        
+                        // 显示过关提示
+                        alert(`恭喜通过第${currentLevel-1}关！\n目标分数：${targetScore}\n剩余步数：${moves}`);
+                        
+                        initGrid();
+                    }
+                    
+                    // 动画循环
+                    function animationLoop() {
+                        if (update()) {
+                            draw();
+                            requestAnimationFrame(animationLoop);
+                        } else {
+                            isAnimating = false;
+                        }
+                    }
+                    animationLoop();
+                    
+                    moves--;
+                    movesElement.textContent = moves;
+                }
+            }
+        }
+
+        // 添加查找相连方块的函数
+        function findConnectedBlocks(startX, startY, color, visited = new Set()) {
+            const key = `${startY},${startX}`;
+            if (visited.has(key)) return visited;
+            
+            if (startX < 0 || startX >= GRID_SIZE || startY < 0 || startY >= GRID_SIZE) return visited;
+            if (!grid[startY][startX] || grid[startY][startX].color !== color) return visited;
+            
+            visited.add(key);
+            
+            // 检查上下左右四个方向
+            findConnectedBlocks(startX + 1, startY, color, visited);
+            findConnectedBlocks(startX - 1, startY, color, visited);
+            findConnectedBlocks(startX, startY + 1, color, visited);
+            findConnectedBlocks(startX, startY - 1, color, visited);
+            
+            return visited;
+        }
+
+        // 事件监听器
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            handleClick(x, y);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = e.touches[0].clientX - rect.left;
+            const y = e.touches[0].clientY - rect.top;
+            handleClick(x, y);
+        });
+
+        restartButton.addEventListener('click', () => {
+            score = 0;
+            currentLevel = 1;
+            targetScore = levelConfig[1].target;
+            moves = levelConfig[1].moves;
+            scoreElement.textContent = score;
+            movesElement.textContent = moves;
+            levelElement.textContent = currentLevel;
+            targetElement.textContent = targetScore;
+            selectedCell = null;
+            initGrid();
+            draw();
+        });
+
+        // 游戏循环
+        function gameLoop() {
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 开始游戏
+        initGrid();
+        gameLoop();
+
+        // 修改计分系统，根据关卡调整得分
+        function calculateScore(matchSize) {
+            const baseScore = matchSize * 20;
+            const bonus = Math.floor(matchSize / 4) * 50;
+            const levelBonus = Math.floor((currentLevel - 1) * baseScore * 0.1); // 关卡加成
+            return baseScore + bonus + levelBonus;
+        }
+
+        // 在游戏初始化时添加窗口大小改变的处理
+        window.addEventListener('resize', () => {
+            const newCellSize = Math.min(
+                (Math.min(window.innerWidth, window.innerHeight) - 40) / GRID_SIZE,
+                50
+            );
+            canvas.width = GRID_SIZE * newCellSize;
+            canvas.height = GRID_SIZE * newCellSize;
+            draw();
+        });
+    </script>
+</body>
+</html>
