@@ -106,7 +106,7 @@
     <div class="level">关卡: <span id="level">1</span></div>
     <div class="score">分数: <span id="score">0</span></div>
     <div class="target">目标分数: <span id="target">500</span></div>
-    <div class="moves">剩余步数: <span id="moves">35</span></div>
+    <div class="moves">剩余步数: <span id="moves">25</span></div>
     <div id="gameContainer">
         <canvas id="gameCanvas"></canvas>
     </div>
@@ -128,6 +128,20 @@
         const COLORS = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
         const ANIMATION_SPEED = 10;
 
+        // 添加关卡配置 - 移到这里
+        const levelConfig = {
+            1: { target: 500, moves: 25 },     // 第一关：简单入门
+            2: { target: 1500, moves: 23 },    // 第二关：累积1500分
+            3: { target: 3500, moves: 22 },    // 第三关：累积3500分
+            4: { target: 7000, moves: 21 },    // 第四关：难度开始提升
+            5: { target: 12500, moves: 20 },   // 第五关：需要更多连击
+            6: { target: 20500, moves: 19 },   // 第六关：考验技巧
+            7: { target: 31500, moves: 18 },   // 第七关：需要规划
+            8: { target: 46500, moves: 17 },   // 第八关：挑战性提升
+            9: { target: 66500, moves: 16 },   // 第九关：开启暴击机制
+            10: { target: 92500, moves: 15 }   // 第十关：最终挑战
+        };
+
         // 设置画布大小
         canvas.width = GRID_SIZE * CELL_SIZE;
         canvas.height = GRID_SIZE * CELL_SIZE;
@@ -135,31 +149,15 @@
         // 游戏状态
         let grid = [];
         let score = 0;
-        let moves = 35;
+        let moves = levelConfig[1].moves;
         let selectedCell = null;
         let isAnimating = false;
-
-        // 修改关卡系统
         let currentLevel = 1;
-        let targetScore = 500; // 降低初始目标分数
+        let targetScore = levelConfig[1].target;
         const levelElement = document.getElementById('level');
         const targetElement = document.getElementById('target');
 
-        // 添加关卡配置
-        const levelConfig = {
-            1: { target: 500, moves: 35 },    // 第一关：简单，更多步数
-            2: { target: 1000, moves: 30 },   // 第二关：稍微提高难度
-            3: { target: 2000, moves: 28 },   // 第三关：继续提升但仍适中
-            4: { target: 3500, moves: 25 },   // 第四关开始难度显著提升
-            5: { target: 5500, moves: 23 },
-            6: { target: 8000, moves: 20 },
-            7: { target: 11000, moves: 18 },
-            8: { target: 15000, moves: 16 },
-            9: { target: 20000, moves: 15 },
-            10: { target: 26000, moves: 14 }
-        };
-
-        // 初始化游戏网格
+        // 修改初始化网格函数
         function initGrid() {
             grid = [];
             // 根据关卡决定使用的颜色数量
@@ -245,34 +243,33 @@
 
         // 消除匹配的糖果
         function removeMatches(matches) {
-            matches.forEach(match => {
-                const [i, j] = match.split(',').map(Number);
-                grid[i][j] = null;
+            matches.forEach(key => {
+                const [y, x] = key.split(',').map(Number);
+                grid[y][x] = null;
             });
-            score += matches.size * 10;
-            scoreElement.textContent = score;
         }
 
         // 填充空缺
         function fillGaps() {
-            for (let j = 0; j < GRID_SIZE; j++) {
+            for (let x = 0; x < GRID_SIZE; x++) {
                 let emptySpaces = 0;
-                for (let i = GRID_SIZE - 1; i >= 0; i--) {
-                    if (!grid[i][j]) {
+                for (let y = GRID_SIZE - 1; y >= 0; y--) {
+                    if (!grid[y][x]) {
                         emptySpaces++;
                     } else if (emptySpaces > 0) {
-                        grid[i + emptySpaces][j] = grid[i][j];
-                        grid[i][j] = null;
-                        grid[i + emptySpaces][j].targetY = i + emptySpaces;
+                        grid[y + emptySpaces][x] = grid[y][x];
+                        grid[y][x] = null;
+                        grid[y + emptySpaces][x].targetY = y + emptySpaces;
                     }
                 }
-
-                // 在顶部添加新的糖果
-                for (let i = 0; i < emptySpaces; i++) {
-                    grid[i][j] = {
-                        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                
+                // 填充顶部空缺
+                for (let y = 0; y < emptySpaces; y++) {
+                    const levelColors = COLORS.slice(0, Math.min(3 + Math.floor(currentLevel / 2), COLORS.length));
+                    grid[y][x] = {
+                        color: levelColors[Math.floor(Math.random() * levelColors.length)],
                         y: -1,
-                        targetY: i
+                        targetY: y
                     };
                 }
             }
@@ -305,7 +302,7 @@
             if (grid[y2][x2]) grid[y2][x2].targetY = y2;
         }
 
-        // 处理点击事件
+        // 修改handleClick函数，添加关卡切换逻辑
         function handleClick(x, y) {
             if (isAnimating || moves <= 0) return;
 
@@ -316,53 +313,68 @@
                 const clickedColor = grid[gridY][gridX].color;
                 const matches = findConnectedBlocks(gridX, gridY, clickedColor);
                 
-                if (matches.size >= 2) { // 至少需要2个相连的相同颜色方块
+                if (matches.size >= 2) {
                     isAnimating = true;
                     
-                    // 根据消除数量计算得分
+                    // 计算得分
                     const totalScore = calculateScore(matches.size);
                     score += totalScore;
                     scoreElement.textContent = score;
                     
-                    // 消除匹配的方块
-                    removeMatches(matches);
-                    fillGaps();
+                    // 添加消除动画
+                    showRemoveAnimation(matches);
                     
-                    // 检查是否达到过关条件
-                    if (score >= targetScore) {
-                        currentLevel++;
-                        if (levelConfig[currentLevel]) {
-                            targetScore = levelConfig[currentLevel].target;
-                            moves = levelConfig[currentLevel].moves;
-                        } else {
-                            // 如果超过预设关卡，使用动态计算
-                            targetScore = Math.floor(targetScore * 1.4);
-                            moves = Math.max(10, Math.floor(moves * 0.9));
+                    // 延迟执行消除和填充
+                    setTimeout(() => {
+                        removeMatches(matches);
+                        fillGaps();
+                        
+                        // 动画循环
+                        function animationLoop() {
+                            if (update()) {
+                                draw();
+                                requestAnimationFrame(animationLoop);
+                            } else {
+                                isAnimating = false;
+                                
+                                // 检查是否达到过关条件
+                                if (score >= targetScore) {
+                                    currentLevel++;
+                                    if (levelConfig[currentLevel]) {
+                                        targetScore = levelConfig[currentLevel].target;
+                                        moves = levelConfig[currentLevel].moves;
+                                        levelElement.textContent = currentLevel;
+                                        targetElement.textContent = targetScore;
+                                        movesElement.textContent = moves;
+                                        
+                                        showLevelMessage(currentLevel - 1);
+                                        
+                                        initGrid();
+                                        draw();
+                                    } else {
+                                        // 通关后的处理
+                                        alert("真棒，恭喜你顺利通关！\n你是最棒的消除大师！");
+                                        // 重置游戏
+                                        currentLevel = 1;
+                                        score = 0;
+                                        targetScore = levelConfig[1].target;
+                                        moves = levelConfig[1].moves;
+                                        scoreElement.textContent = score;
+                                        levelElement.textContent = currentLevel;
+                                        targetElement.textContent = targetScore;
+                                        movesElement.textContent = moves;
+                                        initGrid();
+                                        draw();
+                                    }
+                                }
+                            }
                         }
-                        
-                        levelElement.textContent = currentLevel;
-                        targetElement.textContent = targetScore;
-                        movesElement.textContent = moves;
-                        
-                        // 显示过关提示
-                        alert(`恭喜通过第${currentLevel-1}关！\n目标分数：${targetScore}\n剩余步数：${moves}`);
-                        
-                        initGrid();
-                    }
-                    
-                    // 动画循环
-                    function animationLoop() {
-                        if (update()) {
-                            draw();
-                            requestAnimationFrame(animationLoop);
-                        } else {
-                            isAnimating = false;
-                        }
-                    }
-                    animationLoop();
-                    
+                        animationLoop();
+                    }, 300);
+
                     moves--;
                     movesElement.textContent = moves;
+                    checkGameOver();
                 }
             }
         }
@@ -426,12 +438,74 @@
         initGrid();
         gameLoop();
 
-        // 修改计分系统，根据关卡调整得分
+        // 修改计分系统，添加暴击机制
         function calculateScore(matchSize) {
             const baseScore = matchSize * 20;
             const bonus = Math.floor(matchSize / 4) * 50;
-            const levelBonus = Math.floor((currentLevel - 1) * baseScore * 0.1); // 关卡加成
-            return baseScore + bonus + levelBonus;
+            const levelBonus = Math.floor((currentLevel - 1) * baseScore * 0.1);
+
+            // 添加暴击机制（仅在第9、10关生效）
+            let criticalBonus = 0;
+            if (currentLevel >= 9 && matchSize > 2) {
+                const criticalChance = 0.4; // 40%暴击率
+                if (Math.random() < criticalChance) {
+                    criticalBonus = baseScore * 2; // 暴击伤害
+                    // 显示暴击提示
+                    showCriticalHit(matchSize);
+                }
+            }
+            
+            return baseScore + bonus + levelBonus + criticalBonus;
+        }
+
+        // 添加暴击提示函数
+        function showCriticalHit(matchSize) {
+            const criticalText = document.createElement('div');
+            criticalText.style.position = 'fixed';
+            criticalText.style.top = '50%';
+            criticalText.style.left = '50%';
+            criticalText.style.transform = 'translate(-50%, -50%)';
+            criticalText.style.color = '#ff0000';
+            criticalText.style.fontSize = '24px';
+            criticalText.style.fontWeight = 'bold';
+            criticalText.style.textShadow = '2px 2px 4px rgba(0,0,0,0.3)';
+            criticalText.style.zIndex = '1000';
+            criticalText.textContent = `暴击！消除${matchSize}个方块获得双倍分数！`;
+            
+            document.body.appendChild(criticalText);
+            
+            // 添加动画效果
+            criticalText.style.animation = 'fadeOut 1s forwards';
+            
+            // 添加动画样式
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes fadeOut {
+                    0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+                    100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // 移除元素
+            setTimeout(() => {
+                document.body.removeChild(criticalText);
+            }, 1000);
+        }
+
+        // 修改过关提示
+        function showLevelMessage(level) {
+            let message = `恭喜通过第${level}关！\n目标分数：${targetScore}\n剩余步数：${moves}`;
+            
+            if (level === 3) {
+                message = "难度即将提升！准备好接受挑战了吗？\n" + message;
+            } else if (level === 8) {
+                message = "进入最后冲刺！\n提示：消除3个以上方块有40%几率触发暴击，获得双倍分数！\n" + message;
+            } else if (level === 10) {
+                message = "真棒，恭喜你顺利通关！\n你是最棒的消除大师！";
+            }
+            
+            alert(message);
         }
 
         // 在游戏初始化时添加窗口大小改变的处理
@@ -444,6 +518,75 @@
             canvas.height = GRID_SIZE * newCellSize;
             draw();
         });
+
+        // 添加游戏结束检查
+        function checkGameOver() {
+            if (moves <= 0 && score < targetScore) {
+                alert(`游戏结束！\n你的得分：${score}\n目标分数：${targetScore}\n点击确定重新开始`);
+                // 重置游戏
+                score = 0;
+                currentLevel = 1;
+                targetScore = levelConfig[1].target;
+                moves = levelConfig[1].moves;
+                scoreElement.textContent = score;
+                levelElement.textContent = currentLevel;
+                targetElement.textContent = targetScore;
+                movesElement.textContent = moves;
+                initGrid();
+            }
+        }
+
+        // 修改消除动画效果
+        function showRemoveAnimation(matches) {
+            matches.forEach(key => {
+                const [y, x] = key.split(',').map(Number);
+                const cell = grid[y][x];
+                
+                // 获取canvas的实际位置
+                const canvasRect = canvas.getBoundingClientRect();
+                
+                // 创建动画元素
+                const animDiv = document.createElement('div');
+                animDiv.style.position = 'fixed'; // 改为fixed定位
+                animDiv.style.left = `${x * CELL_SIZE + canvasRect.left}px`;
+                animDiv.style.top = `${y * CELL_SIZE + canvasRect.top}px`;
+                animDiv.style.width = `${CELL_SIZE - 2}px`; // 减去边距
+                animDiv.style.height = `${CELL_SIZE - 2}px`; // 减去边距
+                animDiv.style.backgroundColor = cell.color;
+                animDiv.style.borderRadius = '50%';
+                animDiv.style.animation = 'removeAnim 0.3s ease-out';
+                animDiv.style.zIndex = '1000';
+                animDiv.style.pointerEvents = 'none'; // 防止动画元素影响点击
+                
+                document.body.appendChild(animDiv);
+                
+                // 动画结束后移除元素
+                setTimeout(() => {
+                    document.body.removeChild(animDiv);
+                }, 300);
+            });
+        }
+
+        // 修改动画样式
+        const styleSheet = document.createElement('style');
+        styleSheet.textContent = `
+            @keyframes removeAnim {
+                0% {
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                50% {
+                    transform: scale(1.2);
+                    opacity: 0.8;
+                }
+                100% {
+                    transform: scale(0);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(styleSheet);
     </script>
 </body>
 </html>
+
